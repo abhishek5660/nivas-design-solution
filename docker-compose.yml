@@ -1,0 +1,15 @@
+# PostgreSQL for local/staging use (optional - `npm run dev` already starts an embedded PostgreSQL).
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres   # change for anything that is not a throw-away environment
+      POSTGRES_DB: nivas
+    ports:
+      - '5433:5432'
+    volumes:
+      - nivas-pg:/var/lib/postgresql/data
+volumes:
+  nivas-pg:

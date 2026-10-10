@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  DESIGNER
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(DESIGNER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  projects     Project[]
+  catalog      CatalogItem[]
+  assets       Asset[]
+  shares       ProjectShare[]
+}
+
+model Project {
+  id         String   @id @default(cuid())
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name       String
+  category   String   @default("WARDROBE") // WARDROBE | KITCHEN | TV_PANEL | CUSTOM
+  status     String   @default("DRAFT")    // DRAFT | IN_REVIEW | APPROVED | IN_PRODUCTION | COMPLETED
+  customer   String   @default("")
+  roomNotes  String   @default("")
+  data       Json     // SceneDoc
+  thumbnail  String?  // data URL
+  version    Int      @default(1)
+  shareToken String?  @unique // public read-only preview link
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  revisions  Revision[]
+  shares     ProjectShare[]
+
+  @@index([ownerId, updatedAt])
+}
+
+model ProjectShare {
+  projectId String
+  userId    String
+  access    String  @default("VIEW") // VIEW | EDIT
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+}
+
+model Revision {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version   Int
+  label     String   @default("")
+  data      Json
+  authorId  String
+  createdAt DateTime @default(now())
+
+  @@index([projectId, version])
+}
+
+// Custom/sample catalog entries: materials, hardware, components, templates, themes
+model CatalogItem {
+  id        String   @id @default(cuid())
+  ownerId   String?
+  owner     User?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  kind      String   // MATERIAL | HARDWARE | COMPONENT | TEMPLATE | THEME
+  category  String   @default("")
+  name      String
+  data      Json
+  shared    Boolean  @default(false) // visible to all users (admin-managed)
+  verified  Boolean  @default(false) // manufacturer-verified
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([kind, ownerId])
+}
+
+model Asset {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  mime      String
+  size      Int
+  bytes     Bytes
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value Json
+}

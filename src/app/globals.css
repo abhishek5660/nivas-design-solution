@@ -1,0 +1,125 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ivory: #faf7f2;
+  --color-paper: #ffffff;
+  --color-linen: #f1ece3;
+  --color-sand: #e5ddd0;
+  --color-stone: #b9ae9d;
+  --color-ink: #26272b;
+  --color-charcoal: #33353a;
+  --color-graphite: #4a4c52;
+  --color-mute: #7a7569;
+  --color-wood: #a9794a;
+  --color-wood-dark: #7d5532;
+  --color-gold: #b8923f;
+  --color-gold-soft: #e7d4a6;
+  --color-danger: #b4423a;
+  --color-ok: #3f7a52;
+  --color-warn: #b87a1e;
+  --font-sans: 'Segoe UI', 'Inter', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Cormorant Garamond', 'Palatino Linotype', Georgia, 'Times New Roman', serif;
+  --shadow-card: 0 1px 2px rgb(38 39 43 / 0.06), 0 8px 24px -12px rgb(38 39 43 / 0.18);
+}
+
+html,
+body {
+  height: 100%;
+}
+body {
+  background: var(--color-ivory);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-stone) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-sand bg-paper px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-linen disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply border-ink bg-ink text-ivory hover:bg-charcoal;
+  }
+  .btn-gold {
+    @apply border-gold bg-gold text-white hover:bg-wood;
+  }
+  .btn-danger {
+    @apply border-danger/40 text-danger hover:bg-danger/10;
+  }
+  .btn-sm {
+    @apply px-2 py-1 text-xs;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent hover:bg-linen;
+  }
+  .input {
+    @apply w-full rounded-md border border-sand bg-paper px-2.5 py-1.5 text-sm text-ink placeholder:text-stone focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold;
+  }
+  .label {
+    @apply mb-1 block text-[11px] font-semibold uppercase tracking-wider text-mute;
+  }
+  .card {
+    @apply rounded-xl border border-sand bg-paper shadow-card;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-full bg-linen px-2 py-0.5 text-[11px] font-medium text-graphite;
+  }
+}
+
+.dark-panel {
+  background: #202125;
+  color: #e9e6df;
+}
+
+/* spinner */
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fade-up {
+  animation: fadeUp 0.25s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-up,
+  .spin {
+    animation: none;
+  }
+}
+
+/* dimension labels in 3D */
+.dim-label {
+  background: rgb(38 39 43 / 0.88);
+  color: #f6e7bd;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
