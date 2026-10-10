@@ -28,7 +28,7 @@ npm start                 # listens on $PORT
 
 ## Option B - Vercel + Neon / Supabase Postgres
 
-1. Create the database and copy its pooled connection string.
+1. Create the database and copy its DIRECT (non-pooled) connection string ending in `?sslmode=require` (migrations do not work through a pooler).
 2. Import the repo in Vercel; add the environment variables; leave the Build Command override EMPTY (the `vercel-build` script in package.json runs the migration and the build).
 3. Be aware of serverless limits: request bodies are capped at about 4.5 MB (the app allows 8 MB design saves and uploads, so very large designs/uploads can be rejected), and the login rate limiter is per instance.
 
