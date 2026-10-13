@@ -20,7 +20,8 @@ export interface ProjectRow {
   owner: { name: string };
 }
 
-const CATS = ['WARDROBE', 'KITCHEN', 'TV_PANEL', 'CUSTOM'] as const;
+const CATS = ['WARDROBE', 'KITCHEN', 'TV_PANEL', 'CUSTOM', 'FLOORPLAN'] as const;
+const CAT_NAME: Record<string, string> = { ...CATEGORY_LABEL, FLOORPLAN: 'Floor plan (2D / 3D)' };
 
 function Placeholder({ category }: { category: string }) {
   const paths: Record<string, string> = {
@@ -58,7 +59,7 @@ export function NewProjectDialog({ defaultCategory, onClose }: { defaultCategory
     try {
       const { project } = await api<{ project: { id: string } }>('/api/projects', {
         method: 'POST',
-        body: JSON.stringify({ name, category, customer, roomWidth: rw, roomDepth: rd, roomHeight: rh, layout: category === 'KITCHEN' ? layout : undefined, empty }),
+        body: JSON.stringify(category === 'FLOORPLAN' ? { name, category: 'CUSTOM', customer, floorPlan: true } : { name, category, customer, roomWidth: rw, roomDepth: rd, roomHeight: rh, layout: category === 'KITCHEN' ? layout : undefined, empty }),
       });
       router.push(`/projects/${project.id}`);
     } catch (e) {
@@ -82,10 +83,10 @@ export function NewProjectDialog({ defaultCategory, onClose }: { defaultCategory
       <div className="space-y-4">
         <div>
           <span className="label">Category</span>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             {CATS.map((c) => (
               <button key={c} type="button" onClick={() => setCategory(c)} aria-pressed={category === c} className={`rounded-lg border p-2.5 text-left text-sm transition ${category === c ? 'border-gold bg-gold-soft/30 ring-1 ring-gold' : 'border-sand hover:bg-linen'}`}>
-                <div className="font-medium">{CATEGORY_LABEL[c]}</div>
+                <div className="font-medium">{CAT_NAME[c]}</div>
               </button>
             ))}
           </div>
@@ -100,7 +101,8 @@ export function NewProjectDialog({ defaultCategory, onClose }: { defaultCategory
             <input id="pc" className="input" value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="Customer name" maxLength={200} />
           </div>
         </div>
-        <div>
+        {category === 'FLOORPLAN' && <p className="rounded-md bg-linen/70 px-3 py-2 text-sm text-graphite">Starts with an empty floor plan: draw walls, add doors and windows, place furniture and cabinets, and switch between the 2D plan and the 3D model. You can add floors and buildings later.</p>}
+        {category !== 'FLOORPLAN' && <div>
           <span className="label">Room size (mm)</span>
           <div className="grid grid-cols-3 gap-2">
             {[
@@ -114,7 +116,7 @@ export function NewProjectDialog({ defaultCategory, onClose }: { defaultCategory
               </label>
             ))}
           </div>
-        </div>
+        </div>}
         {category === 'KITCHEN' && (
           <div>
             <label className="label" htmlFor="kl">Kitchen layout</label>
@@ -128,9 +130,9 @@ export function NewProjectDialog({ defaultCategory, onClose }: { defaultCategory
             <p className="mt-1 text-xs text-mute">Cabinets, appliances and worktops are generated to fit your room and can be edited individually.</p>
           </div>
         )}
-        <label className="flex items-center gap-2 text-sm">
+        {category !== 'FLOORPLAN' && <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={empty} onChange={(e) => setEmpty(e.target.checked)} /> Start with an empty room
-        </label>
+        </label>}
         {error && <p role="alert" className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
       </div>
     </Dialog>

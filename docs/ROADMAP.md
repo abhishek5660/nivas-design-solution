@@ -18,6 +18,14 @@ Ordered by value to a design-and-manufacture workflow and by dependency. Items m
 9. **TV panels** - recessed downlights and LED-profile geometry, curved/arched niches, cut-outs for sockets and wall boxes.
 10. **Component rules engine** - user-editable construction standards (panel thickness by span, hinge rules, drilling patterns) stored per organisation.
 
+## Floor-plan follow-ups
+
+* Curved walls, stair landings / spiral stairs and automatic slab openings, roof thickness and dormers, door-swing animation in 3D.
+* DXF/DWG **import** and PDF references; hatch/line-type libraries; layer manager.
+* AI-assisted layout (only with a real model and a clear review step) - today the wizard is deliberately manual.
+* Comments and review threads on the plan; real-time co-editing.
+* Section views from the 3D model; interior elevations per room.
+
 ## P2 - production & manufacturing depth
 
 11. **Optimal board nesting** (guillotine with rotation search, off-cut reuse, grain constraints), multiple stock sizes, cost-based sheet selection.

@@ -5,6 +5,8 @@
 
 export type Vec3 = [number, number, number];
 
+import type { PlanModel } from './plan/types';
+
 export type Category = 'WARDROBE' | 'KITCHEN' | 'TV_PANEL' | 'CUSTOM';
 
 export type NodeType =
@@ -15,6 +17,7 @@ export type NodeType =
   | 'tv_panel'
   | 'box' // free-form primitive for custom furniture
   | 'model' // imported GLB asset
+  | 'furniture' // generic furniture (bed, sofa, table ...) from the Furnish library
   | 'group';
 
 export type Slot =
@@ -300,6 +303,10 @@ export interface ModelParams {
   triangles: number;
 }
 
+export interface FurnitureParams {
+  kind: string;
+}
+
 export interface BoxParams {
   shape: 'box' | 'cylinder';
   solid: boolean;
@@ -318,6 +325,8 @@ export interface SceneNode {
   subMaterials?: Record<string, MaterialAssign>;
   visible: boolean;
   locked: boolean;
+  /** floor of the floor plan this object stands on (undefined = first floor) */
+  floorId?: string;
   params: Record<string, unknown>;
   /** Free-form manufacturing metadata */
   notes?: string;
@@ -389,6 +398,8 @@ export interface SceneDoc {
   lighting: LightingCfg;
   /** Edit log for revisions in-doc (short) */
   meta: { createdWith: string; notes: string };
+  /** Floor-plan workspace data: buildings, floors, walls, annotations ... (absent for classic projects) */
+  plan?: PlanModel;
 }
 
 export interface Issue {

@@ -12,6 +12,8 @@ import { descendants, topAncestor, useEditor } from '@/store/editor';
 import { thumbnailProvider } from '@/store/save';
 import { ModelMesh, NodeParts } from './NodeView';
 import { RoomMesh } from './RoomMesh';
+import { nodeShownInPlan, PlanLights, PlanMesh } from '../plan/PlanMesh';
+import { usePlanUi } from '@/store/planUi';
 
 const M = 0.001; // mm → scene metres
 
@@ -64,7 +66,7 @@ function Lights({ doc, ledPositions }: { doc: SceneDoc; ledPositions: { p: Vec3;
   const cx = (rb.min[0] + rb.max[0]) / 2 * M;
   const cz = (rb.min[2] + rb.max[2]) / 2 * M;
   const span = Math.max(rb.max[0] - rb.min[0], rb.max[2] - rb.min[2]) * M;
-  const h = doc.room.height * M;
+  const h = (doc.plan?.enabled ? rb.max[1] : doc.room.height) * M;
   useEffect(() => {
     gl.toneMapping = TONE[L.toneMapping] ?? THREE.ACESFilmicToneMapping;
     gl.toneMappingExposure = L.exposure;
@@ -321,7 +323,9 @@ function SceneContent() {
 
   // On-demand rendering: draw a frame whenever editor state changes, textures finish loading, or an animation is running.
   useEffect(() => {
-    const unsub = useEditor.subscribe(() => invalidate());
+    const unsub0 = usePlanUi.subscribe((s, prev) => { if (s.selection !== prev.selection || s.floorMode !== prev.floorMode) invalidate(); }); // not on every cursor move
+    const unsub1 = useEditor.subscribe(() => invalidate());
+    const unsub = () => { unsub0(); unsub1(); };
     const onTex = () => invalidate();
     window.addEventListener('nivas-invalidate', onTex);
     return () => {
@@ -597,7 +601,9 @@ function SceneContent() {
     return out.slice(0, 10);
   }, [doc]);
 
-  const visibleNodes = doc.order.map((id) => doc.nodes[id]).filter((n): n is SceneNode => !!n && n.visible && n.type !== 'group');
+  const planSel = usePlanUi((s) => s.selection);
+  const floorMode = usePlanUi((s) => s.floorMode);
+  const visibleNodes = doc.order.map((id) => doc.nodes[id]).filter((n): n is SceneNode => !!n && n.visible && n.type !== 'group' && (!doc.plan?.enabled || nodeShownInPlan(doc.plan, n.floorId, floorMode)));
   const selSet = new Set(sel.ids.flatMap((i) => descendants(doc, [i])));
   const collisions = useMemo(() => {
     if (!ui.ghost) return new Set<string>();
@@ -615,10 +621,11 @@ function SceneContent() {
     <>
       <color attach="background" args={[PRESETS[doc.lighting.preset].bg]} />
       <Lights doc={doc} ledPositions={ledPositions} />
+      {doc.plan?.enabled && <PlanLights plan={doc.plan} />}
       <CameraRig doc={doc} walk={walk} />
       {walk && <WalkControls doc={doc} />}
       <group scale={M}>
-        <RoomMesh doc={doc} showWalls={ui.showWalls} cutaway={!ui.walkthrough && ui.viewMode === 'room'} showCeiling={ui.showCeiling} />
+        {doc.plan?.enabled ? <PlanMesh plan={doc.plan} showCeiling={ui.showCeiling} selection={sel.ids.concat(planSel)} showWalls={ui.showWalls} cutaway={!ui.walkthrough && ui.viewMode === 'room'} /> : <RoomMesh doc={doc} showWalls={ui.showWalls} cutaway={!ui.walkthrough && ui.viewMode === 'room'} showCeiling={ui.showCeiling} />}
         {visibleNodes.map((n) => (
           <group
             key={n.id}

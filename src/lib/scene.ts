@@ -1,6 +1,9 @@
 import { buildCabinet, CABINET_VARIANTS, defaultCabinet, validateCabinet } from './build/cabinet';
 import { buildAppliance, buildBox, buildCountertop, defaultAppliance, defaultBox, defaultCountertop, validateAppliance, validateBox, validateCountertop } from './build/misc';
 import { buildTv, defaultTv, validateTv } from './build/tv';
+import { buildFurniture, furnitureById, validateFurniture } from './build/furniture';
+import { activeFloor, allFloors, makePlan } from './plan/model';
+import { roomsOf } from './plan/rooms';
 import { buildWardrobe, defaultWardrobe, resizeWardrobe, uid, validateWardrobe } from './build/wardrobe';
 import type {
   ApplianceParams,
@@ -45,6 +48,9 @@ export function buildParts(node: SceneNode): Part[] {
     case 'box':
       parts = buildBox(node);
       break;
+    case 'furniture':
+      parts = buildFurniture(node);
+      break;
     default:
       parts = [];
   }
@@ -75,6 +81,8 @@ export function validateNode(node: SceneNode): Issue[] {
       return validateBox(node);
     case 'model':
       return validateBox(node);
+    case 'furniture':
+      return validateFurniture(node);
     default:
       return [];
   }
@@ -306,6 +314,14 @@ export function makeNode(type: NodeType, o: MakeNodeOpts = {}): SceneNode {
       name = o.name ?? nextName('TV panel');
       break;
     }
+    case 'furniture': {
+      const item = furnitureById(String(o.params?.kind ?? o.variant ?? 'sofa3'));
+      size = item ? { ...item.size } : { w: 800, h: 800, d: 800 };
+      params = { kind: item?.id ?? 'sofa3' };
+      name = o.name ?? nextName(item?.label ?? 'Furniture');
+      if (item && !o.materials) o = { ...o, materials: { ...item.materials } };
+      break;
+    }
     default: {
       const d = defaultBox();
       size = d.size;
@@ -447,6 +463,39 @@ export interface SnapResult {
 const WALL_SNAP = 220;
 const EDGE_SNAP = 60;
 
+/** Room edges that furniture can snap to: the plan's detected rooms (floor-plan projects) or the legacy room polygon. */
+export function snapEdges(doc: SceneDoc, floorId?: string): WallEdge[] {
+  if (doc.plan?.enabled) {
+    const fl = (floorId && allFloors(doc.plan).find((f) => f.id === floorId)) || activeFloor(doc.plan);
+    const out: WallEdge[] = [];
+    let k = 0;
+    for (const r of roomsOf(fl, doc.plan.roomProps)) {
+      const pts = r.inner;
+      for (let i = 0; i < pts.length; i++) {
+        const p0 = pts[i];
+        const p1 = pts[(i + 1) % pts.length];
+        const dx = p1[0] - p0[0];
+        const dz = p1[1] - p0[1];
+        const length = Math.hypot(dx, dz);
+        if (length < 1) continue;
+        out.push({ index: k++, p0, p1, dir: [dx / length, dz / length], normal: [-dz / length, dx / length], length });
+      }
+    }
+    return out;
+  }
+  return wallEdges(doc.room);
+}
+
+/** Whether the object's footprint lies outside every room of its floor (floor-plan projects) or the legacy room. */
+function outsideRooms(doc: SceneDoc, node: SceneNode): boolean {
+  if (!doc.plan?.enabled) return nodeOutsideRoom(doc, node);
+  const fl = (node.floorId && allFloors(doc.plan).find((f) => f.id === node.floorId)) || activeFloor(doc.plan);
+  const rooms = roomsOf(fl, doc.plan.roomProps);
+  if (!rooms.length) return false; // nothing drawn yet: no warning
+  const poly = footprint(node, 2);
+  return !rooms.some((r) => poly.every(([x, z]) => pointInPolygon(x, z, r.outline)));
+}
+
 export function snapNode(doc: SceneDoc, node: SceneNode, cand: Vec3, rotationY: number, gridSnap: number | null, wallSnap = true): SnapResult {
   let [x, y, z] = cand;
   let rot = rotationY;
@@ -458,7 +507,7 @@ export function snapNode(doc: SceneDoc, node: SceneNode, cand: Vec3, rotationY: 
   const isIsland = node.type === 'cabinet' && (node.params as unknown as CabinetParams).variant === 'island';
   if (wallSnap && !isIsland && node.type !== 'box') {
     let best: { e: WallEdge; dist: number } | null = null;
-    for (const e of wallEdges(doc.room)) {
+    for (const e of snapEdges(doc, node.floorId)) {
       // distance from node centre to wall line along the normal
       const dist = (x - e.p0[0]) * e.normal[0] + (z - e.p0[1]) * e.normal[1] - node.size.d / 2;
       const along = (x - e.p0[0]) * e.dir[0] + (z - e.p0[1]) * e.dir[1];
@@ -502,7 +551,7 @@ export function checkPlacement(doc: SceneDoc, node: SceneNode): Issue[] {
   const probe: SceneDoc = { ...doc, nodes: { ...doc.nodes, [node.id]: node } };
   const cols = findCollisions(probe, node.id);
   for (const c of cols) out.push({ level: 'error', message: c.message });
-  if (node.type !== 'tv_panel' && nodeOutsideRoom(probe, node)) out.push({ level: 'warning', message: `${node.name} extends outside the room.` });
+  if (node.type !== 'tv_panel' && outsideRooms(probe, node)) out.push({ level: 'warning', message: `${node.name} extends outside the room.` });
   if (node.position[1] < 0) out.push({ level: 'error', message: 'Elevation cannot be below the floor.' });
   return out;
 }
@@ -719,12 +768,15 @@ export interface StarterOpts {
   height?: number;
   depth?: number;
   empty?: boolean;
+  /** start with an empty floor plan (walls, rooms and furniture are drawn in the 2D workspace) */
+  floorPlan?: boolean;
 }
 
 /** Builds the document a brand-new project starts with. */
 export function starterDoc(category: Category, o: StarterOpts = {}): SceneDoc {
   resetNameCounters(); // names are numbered per project, never across requests
   let doc = defaultDoc(category);
+  if (o.floorPlan) return { ...doc, plan: makePlan(true) };
   if (o.roomWidth || o.roomDepth || o.roomHeight) {
     const prev = roomBounds(doc.room);
     doc = { ...doc, room: { ...roomFromRect(o.roomWidth ?? prev.maxX, o.roomDepth ?? prev.maxZ, o.roomHeight ?? doc.room.height) } };

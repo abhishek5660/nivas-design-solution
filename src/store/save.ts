@@ -5,6 +5,9 @@ import { useEditor } from './editor';
 /** Registered by the 3D viewport so saves can attach a small thumbnail. */
 export const thumbnailProvider: { current: null | (() => string | null) } = { current: null };
 
+/** A thumbnail the user picked explicitly (Set thumbnail); used by the next save. */
+export const thumbnailOverride: { current: string | null } = { current: null };
+
 let inflight: Promise<boolean> | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryDelay = 4000;
@@ -59,7 +62,8 @@ export function saveNow(opts: { manual?: boolean; label?: string } = {}): Promis
   let thumbnail: string | null | undefined;
   if (opts.manual || savesSinceThumb >= 4) {
     try {
-      thumbnail = thumbnailProvider.current?.() ?? undefined;
+      thumbnail = thumbnailOverride.current ?? thumbnailProvider.current?.() ?? undefined;
+      thumbnailOverride.current = null;
     } catch {
       thumbnail = undefined;
     }

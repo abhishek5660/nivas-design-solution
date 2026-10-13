@@ -3,6 +3,7 @@ import { handle, HttpError, loadProjectFor, requireUser } from '@/lib/server/aut
 import { getRates } from '@/lib/server/rates';
 import { buildBoq } from '@/lib/docs/bom';
 import { buildDrawing, drawingToDXF, drawingToSVG, type DrawingView } from '@/lib/docs/drawing';
+import { buildFloorSheet } from '@/lib/plan/sheet';
 import { boqCsv, cutlistCsv, cutlistPdf, drawingsPdf, hardwareCsv, quotationPdf } from '@/lib/docs/export';
 import { exportProjectJson, validateDoc } from '@/lib/schema';
 
@@ -44,6 +45,13 @@ export const GET = handle(async (req: Request, { params }: { params: Promise<{ i
       return file(drawingsPdf(doc, meta, ['plan', 'front', 'left']), 'application/pdf', 'drawings.pdf');
     case 'project.json':
       return file(exportProjectJson({ name: project.name, category: project.category, customer: project.customer, roomNotes: project.roomNotes }, doc), 'application/json', 'project.json');
+    case 'floorplan.svg':
+    case 'floorplan.dxf': {
+      if (!doc.plan?.enabled) throw new HttpError(400, 'This project has no floor plan.');
+      const d = buildFloorSheet(doc, doc.plan.activeFloorId);
+      if (type === 'floorplan.svg') return file(drawingToSVG(d, { title: `${project.name} - ${d.title}` }), 'image/svg+xml', 'floorplan.svg');
+      return file(drawingToDXF(d), 'application/dxf', 'floorplan.dxf');
+    }
     default: {
       const m = /^(plan|front|back|left|right)\.(svg|dxf)$/.exec(type);
       if (m && VIEWS.includes(m[1] as DrawingView)) {

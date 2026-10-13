@@ -166,6 +166,32 @@ Legend: ✅ implemented and verified · 🟡 partial (works, with the stated lim
 | Responsive layout | 🟡 | Panels become slide-over drawers below 1024 px; the editor is desktop-first and has not been tested on touch devices |
 | Accessibility | 🟡 | Labelled controls, keyboard operation of forms/dialogs, focus rings; the 3D canvas itself is not keyboard-navigable except arrow-key nudging of a selection |
 
+## 14. Floor-plan workspace (2D plan ⇄ 3D) - see [FLOOR_PLAN.md](FLOOR_PLAN.md)
+
+| Feature | Status | Notes |
+|---|---|---|
+| Empty floor-plan project; convert a classic room to a plan | ✅ | e2e `floor plan flows`; the clear interior is preserved exactly (unit) |
+| Shared model: 2D plan, 3D, drawings, BOQ, QC, exports, persistence | ✅ | one `doc.plan`; e2e save → reload, 2D/3D, exports |
+| Walls (T-junctions, crossings, corners), room detection, net areas | ✅ | unit `plan-rooms`, e2e |
+| Doors, windows (checked placement, cut walls in 2D and 3D, follow wall edits) | ✅ | unit + e2e |
+| Slab, ceiling, tiling (grid/brick/diagonal, real tile counts), stairs, columns, beams, railings, roofs, lights, strip lights | ✅ | unit `plan-3d`, `plan-tools`; visual check |
+| Buildings and floors (elevation, storey height, duplicate, delete) | ✅ | unit `plan-actions`, e2e |
+| Draw tools: line, polyline, construction line, 3-point arc, circle, rectangle, polygon, arrow, hatch | ✅ | unit + e2e (real mouse) |
+| Edit tools: trim, extend, mirror, copy, move, rotate, scale, offset, fillet, align/distribute, group, components, lock/hide/isolate | ✅ | unit + e2e |
+| Typed numeric input (length, angle, offset, absolute point), snapping, mm accuracy | ✅ | unit + e2e |
+| Annotations: text, multileader, compass, linked dimension, angle, radial, XY | ✅ | unit |
+| Furniture / cabinets placed from the plan (snap to rooms, collision checks) | ✅ | e2e |
+| 3D import (.glb), reference images, saved views, thumbnail | ✅ | e2e `3D import and reference images` |
+| Design modes (architecture / interior / production), lock design | ✅ | e2e |
+| Render, gallery, screenshot, export PNG / PDF / DXF / JSON, extra lighting | ✅ | e2e; video ⬜ |
+| QC + violations (located), BOQ schedule, pricing, raw materials, work schedule | ✅ | unit `plan-outputs`, e2e; nothing is invented (missing prices/durations are flagged) |
+| Floor sheet drawings (SVG / DXF / PDF per floor) | ✅ | unit + e2e |
+| Branches (design variants), presentations, cache panel, preferences | ✅ | unit + e2e |
+| Every ribbon button does something visible; unsupported ones explain why | ✅ | e2e `no dead buttons` (≈ 110 buttons) |
+| AI floor plan | ⬜ | replaced by a manual *Floor plan wizard*; labelled as such |
+| Comments / review, face & edge selection, video render, DXF/DWG import | ⬜ | buttons are disabled and say so (or absent) |
+| Curved walls, spiral/landing stairs, stair openings in slabs, roof thickness, door animation in 3D | ⬜ | see limitations in FLOOR_PLAN.md |
+
 ## Acceptance tests from the brief (§19)
 
 | # | Requirement | Evidence |

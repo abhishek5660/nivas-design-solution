@@ -17,6 +17,10 @@ import { parseProjectImport, validateDoc } from '@/lib/schema';
 import { useEditor, type ProjectMeta, type Tab } from '@/store/editor';
 import { clearDraft, readDraft, saveNow, useAutosave } from '@/store/save';
 import { usePrefs } from '@/store/prefs';
+import { PlanWorkspace } from '../plan/PlanShell';
+import { roomToPlan } from '@/lib/plan/actions';
+import { usePlanUi } from '@/store/planUi';
+import { planEngine, planHost } from '@/store/planHost';
 
 const Viewport = dynamic(() => import('./Viewport'), { ssr: false, loading: () => <div className="grid h-full place-items-center"><Spinner size={30} /></div> });
 // bridge for drag-and-drop from the library
@@ -50,7 +54,10 @@ export function Editor({ meta, doc, version, access }: Props) {
     // test hook (not exposed in production builds)
     if (process.env.NODE_ENV !== 'production') (window as unknown as { __nivas?: unknown }).__nivas = {
         store: useEditor,
+        plan: { ui: usePlanUi, host: planHost, engine: planEngine },
         frames: () => viewportApi.gl?.info.render.frame ?? -1,
+        /** number of meshes currently in the 3D scene (used by e2e) */
+        meshes: () => { let n = 0; viewportApi.scene?.traverse((o) => { if ((o as THREE.Mesh).isMesh) n++; }); return n; },
         /** client-pixel position of a node's centre (used by e2e drag tests) */
         screenOf: (id: string) => {
           const n = useEditor.getState().doc.nodes[id];
@@ -152,6 +159,7 @@ export function Editor({ meta, doc, version, access }: Props) {
     st.setUi({ compareMode: !st.ui.compareMode });
   }
 
+  const isPlan = useEditor((s) => !!s.doc.plan?.enabled);
   if (!ready) return <div className="grid h-screen place-items-center"><Spinner size={32} /></div>;
   return (
     <div className="flex h-screen flex-col bg-ivory">
@@ -166,9 +174,19 @@ export function Editor({ meta, doc, version, access }: Props) {
         </div>
       )}
       <div className="relative flex min-h-0 flex-1">
-        {tab === 'design' && <div className={`${panel === 'left' ? 'absolute inset-y-0 left-0 z-30 flex shadow-2xl' : 'hidden'} lg:static lg:flex lg:shadow-none`}><LeftPanel /></div>}
+        {tab === 'design' && !isPlan && <div className={`${panel === 'left' ? 'absolute inset-y-0 left-0 z-30 flex shadow-2xl' : 'hidden'} lg:static lg:flex lg:shadow-none`}><LeftPanel /></div>}
         <main className="relative min-w-0 flex-1" aria-label="Workspace">
-          {tab === 'design' ? (
+          {tab === 'design' && isPlan ? (
+            <PlanWorkspace
+              viewport3d={
+                <div className="absolute inset-0">
+                  <Viewport />
+                  <Toolbar onRender={() => usePlanUi.getState().setPanel('render')} onCompare={toggleCompare} />
+                  {compareMode && before && <CompareOverlay url={before.url} onClose={() => useEditor.getState().setUi({ compareMode: false })} onReset={() => { setBefore(null); useEditor.getState().setUi({ compareMode: false }); }} />}
+                </div>
+              }
+            />
+          ) : tab === 'design' ? (
             <div className="absolute inset-0" onDragOver={(e) => e.dataTransfer.types.includes('application/x-nivas-lib') && e.preventDefault()} onDrop={onDrop}>
               <Viewport />
               <Toolbar onRender={() => setRenderOpen(true)} onCompare={toggleCompare} />
@@ -188,7 +206,7 @@ export function Editor({ meta, doc, version, access }: Props) {
             </div>
           )}
         </main>
-        {tab === 'design' && <div className={`${panel === 'right' ? 'absolute inset-y-0 right-0 z-30 flex shadow-2xl' : 'hidden'} lg:static lg:flex lg:shadow-none`}><RightPanel /></div>}
+        {tab === 'design' && !isPlan && <div className={`${panel === 'right' ? 'absolute inset-y-0 right-0 z-30 flex shadow-2xl' : 'hidden'} lg:static lg:flex lg:shadow-none`}><RightPanel /></div>}
       </div>
       <Toasts />
       {renderOpen && <RenderDialog onClose={() => setRenderOpen(false)} />}
@@ -286,6 +304,7 @@ function TopBar({ onBack }: { onBack: () => void }) {
   const tab = useEditor((s) => s.ui.tab);
   const setUi = useEditor((s) => s.setUi);
   const status = useEditor((s) => s.saveStatus);
+  const isPlan = useEditor((s) => !!s.doc.plan?.enabled);
   const saveError = useEditor((s) => s.saveError);
   const [name, setName] = useState(meta.name);
   const [shareOpen, setShareOpen] = useState(false);
@@ -330,10 +349,23 @@ function TopBar({ onBack }: { onBack: () => void }) {
       </div>
       <nav className="flex rounded-lg bg-linen p-0.5" aria-label="Project sections">
         {TABS.map(([k, l]) => (
-          <button key={k} aria-current={tab === k ? 'page' : undefined} onClick={() => setUi({ tab: k })} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${tab === k ? 'bg-ink text-gold-soft shadow' : 'text-graphite hover:bg-white'}`}>{l}</button>
+          <button key={k} aria-current={tab === k ? 'page' : undefined} onClick={() => setUi({ tab: k })} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${tab === k ? 'bg-ink text-gold-soft shadow' : 'text-graphite hover:bg-white'}`}>{k === 'design' && isPlan ? 'Design' : l}</button>
         ))}
       </nav>
       <div className="ml-auto flex items-center gap-2">
+        {!isPlan && access !== 'VIEW' && (
+          <button
+            className="btn btn-sm"
+            title="Rebuild this room as editable walls, doors and windows and open the 2D floor-plan workspace (you can undo it)"
+            onClick={() => {
+              const st = useEditor.getState();
+              st.commit({ ...st.doc, plan: roomToPlan(st.doc) });
+              st.toast('success', 'Converted to a floor plan. Your cabinets and furniture are kept on the ground floor.');
+            }}
+          >
+            Convert to floor plan
+          </button>
+        )}
         <SaveBadge />
         <button className="btn btn-sm btn-primary" disabled={access === 'VIEW' || status === 'saving'} onClick={() => saveNow({ manual: true })}>Save</button>
         {access === 'OWNER' && <button className="btn btn-sm" onClick={() => setShareOpen(true)}>Share</button>}

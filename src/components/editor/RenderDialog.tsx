@@ -13,7 +13,7 @@ const SIZES = [
   { value: '3840x2160', label: '4K 3840 × 2160' },
 ];
 
-export function RenderDialog({ onClose }: { onClose: () => void }) {
+export function RenderDialog({ onClose, onGallery }: { onClose: () => void; onGallery?: (blob: Blob, name: string, width: number, height: number) => Promise<void> }) {
   const meta = useEditor((s) => s.meta);
   const doc = useEditor((s) => s.doc);
   const [size, setSize] = useState('1920x1080');
@@ -24,7 +24,8 @@ export function RenderDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [prog, setProg] = useState<[number, number]>([0, 1]);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ url: string; name: string; bytes: number } | null>(null);
+  const [result, setResult] = useState<{ url: string; name: string; bytes: number; blob: Blob; w: number; h: number } | null>(null);
+  const [galleryState, setGalleryState] = useState<'idle' | 'busy' | 'done'>('idle');
   const ctl = useRef<AbortController | null>(null);
 
   useEffect(() => () => { ctl.current?.abort(); }, []);
@@ -43,10 +44,13 @@ export function RenderDialog({ onClose }: { onClose: () => void }) {
         blob = await renderStill({ width: w, height: h, samples, format, signal: ctl.current.signal, onProgress: (d, t) => setProg([d, t]) });
       } else {
         const rb = roomBox(doc);
-        const eye: [number, number, number] = [((rb.min[0] + rb.max[0]) / 2) * 0.001, 1.5, ((rb.min[2] + rb.max[2]) / 2) * 0.001];
+        const base0 = doc.plan?.enabled ? (doc.plan.buildings.flatMap((b) => b.floors).find((f) => f.id === doc.plan!.activeFloorId)?.elevation ?? 0) * 0.001 : 0;
+        const eye: [number, number, number] = [((rb.min[0] + rb.max[0]) / 2) * 0.001, base0 + 1.5, ((rb.min[2] + rb.max[2]) / 2) * 0.001];
         blob = await renderPanorama({ width: Number(panoW), eye, format, signal: ctl.current.signal, onProgress: (d, t) => setProg([d, t]) });
       }
-      setResult({ url: URL.createObjectURL(blob), name: `${base}-${mode === 'still' ? size : 'panorama-' + panoW}.${format === 'png' ? 'png' : 'jpg'}`, bytes: blob.size });
+      const dims = mode === 'still' ? size.split('x').map(Number) : [Number(panoW), Number(panoW) / 2];
+      setGalleryState('idle');
+      setResult({ url: URL.createObjectURL(blob), name: `${base}-${mode === 'still' ? size : 'panorama-' + panoW}.${format === 'png' ? 'png' : 'jpg'}`, bytes: blob.size, blob, w: dims[0], h: dims[1] });
     } catch (e) {
       setError(e instanceof RenderError ? e.message : `Render failed: ${(e as Error).message}`);
     }
@@ -96,7 +100,10 @@ export function RenderDialog({ onClose }: { onClose: () => void }) {
             <img src={result.url} alt="Rendered result" className="max-h-72 w-full rounded-lg border border-sand object-contain" />
             <div className="flex items-center justify-between text-sm">
               <span className="text-mute">{result.name} · {(result.bytes / 1024 / 1024).toFixed(2)} MB</span>
-              <a className="btn btn-primary" href={result.url} download={result.name}>Download</a>
+              <span className="flex gap-2">
+                {onGallery && <button className="btn" disabled={galleryState !== 'idle'} onClick={async () => { setGalleryState('busy'); try { await onGallery(result.blob, result.name, result.w, result.h); setGalleryState('done'); } catch (e) { setError((e as Error).message); setGalleryState('idle'); } }}>{galleryState === 'done' ? 'Added to gallery' : galleryState === 'busy' ? 'Adding…' : 'Add to gallery'}</button>}
+                <a className="btn btn-primary" href={result.url} download={result.name}>Download</a>
+              </span>
             </div>
           </div>
         )}

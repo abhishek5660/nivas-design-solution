@@ -3,6 +3,7 @@ import { SAMPLE_HARDWARE } from '../catalog';
 import type { SceneDoc } from '../types';
 import { buildBoq, type Boq } from './bom';
 import { buildCutList, nestCutList, type CutListResult } from './cutlist';
+import { buildFloorSheet } from '../plan/sheet';
 import { buildDrawing, type Drawing, type DrawingView } from './drawing';
 import { allNodeParts, nodeCodes } from './resolve';
 
@@ -297,13 +298,23 @@ export function cutlistPdf(doc: SceneDoc, meta: ProjectMeta): ArrayBuffer {
 
 export function drawingsPdf(doc: SceneDoc, meta: ProjectMeta, views: DrawingView[] = ['plan', 'front', 'left'], showInterior = false): ArrayBuffer {
   const pdf = new jsPDF({ unit: 'pt', format: 'a3', orientation: 'landscape' });
-  views.forEach((v, idx) => {
+  // floor-plan projects: one sheet per floor that has content, then the elevations of the placed furniture / cabinets
+  const sheets: Drawing[] = [];
+  if (doc.plan?.enabled) {
+    for (const f of doc.plan.buildings.flatMap((b) => b.floors)) {
+      const d = buildFloorSheet(doc, f.id);
+      if (d.prims.length) sheets.push(d);
+    }
+  }
+  const classic = doc.plan?.enabled ? (doc.order.length ? views.filter((v) => v !== 'plan') : []) : views;
+  const all: Drawing[] = [...sheets, ...classic.map((v) => buildDrawing(doc, v, { showInterior }))];
+  if (!all.length) all.push(buildDrawing(doc, 'plan', { showInterior }));
+  all.forEach((d, idx) => {
     if (idx > 0) pdf.addPage();
-    const d = buildDrawing(doc, v, { showInterior });
     header(pdf, d.title, meta, d.scaleNote);
     drawOnPdf(pdf, d, 36, 100, pdf.internal.pageSize.getWidth() - 72, pdf.internal.pageSize.getHeight() - 150);
   });
-  footer(pdf, 'Drawings are generated from the saved 3D model. Dimensions in millimetres.');
+  footer(pdf, 'Drawings are generated from the saved model. Dimensions in millimetres.');
   return pdf.output('arraybuffer');
 }
 

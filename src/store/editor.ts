@@ -114,6 +114,8 @@ interface EditorState {
   setRoom: (fn: (r: Room) => Room, key?: string) => boolean;
   setDocPart: <K extends keyof SceneDoc>(key: K, value: SceneDoc[K], coalesce?: string) => void;
   replaceDoc: (doc: SceneDoc, label?: string) => void;
+  /** Changes the doc without an undo step (navigation such as the open floor). */
+  softSet: (next: SceneDoc) => void;
   fixCountertops: () => void;
   undo: () => void;
   redo: () => void;
@@ -123,6 +125,15 @@ interface EditorState {
   markSaving: () => void;
   markSaved: (version: number, updatedAt: string, docAtRequest: SceneDoc) => void;
   markSaveFailed: (status: 'error' | 'conflict', msg: string) => void;
+}
+
+/** Undo/redo must not move the user to another floor: keep the floor/building that is currently open when it still exists. */
+function keepNavigation(from: SceneDoc, to: SceneDoc): SceneDoc {
+  const a = from.plan;
+  const b = to.plan;
+  if (!a || !b || (a.activeFloorId === b.activeFloorId && a.activeBuildingId === b.activeBuildingId)) return to;
+  const bld = b.buildings.find((x) => x.floors.some((f) => f.id === a.activeFloorId));
+  return bld ? { ...to, plan: { ...b, activeFloorId: a.activeFloorId, activeBuildingId: bld.id } } : to;
 }
 
 const emptyDoc = (): SceneDoc => ({ schema: 1, units: 'mm', category: 'CUSTOM', room: { points: [[0, 0], [1, 0], [1, 1]], height: 2700, wallThickness: 120, openings: [], columns: [], floorMaterial: 'floor-oak', wallMaterial: 'wall-white', ceilingMaterial: 'wall-white', showWalls: true, showCeiling: false }, nodes: {}, order: [], defaults: {}, customMaterials: [], pricing: { currency: 'INR', taxPct: 18, labourPct: 12, installationFlat: 0, wastagePct: 10, discountPct: 0, overrides: {} }, lighting: { preset: 'neutral', exposure: 1, toneMapping: 'ACES', shadows: true, ao: true, roomLight: 1 }, meta: { createdWith: '', notes: '' } });
@@ -248,6 +259,7 @@ export const useEditor = create<EditorState>((set, get) => {
     setHovered: (id) => set({ hovered: id }),
 
     commit: (next, key) => touch(next, key),
+    softSet: (next) => set((s) => ({ doc: next, saveStatus: s.access === 'VIEW' ? 'readonly' : 'dirty', dirtyAt: Date.now() })),
 
     beginTx: () => {
       if (get().access === 'VIEW') return;
@@ -627,14 +639,16 @@ export const useEditor = create<EditorState>((set, get) => {
       const s = get();
       const last = s.past[s.past.length - 1];
       if (!last) return;
-      set({ doc: last.doc, past: s.past.slice(0, -1), future: [s.doc, ...s.future].slice(0, HISTORY_LIMIT), saveStatus: s.access === 'VIEW' ? 'readonly' : 'dirty', dirtyAt: Date.now(), sel: { ids: s.sel.ids.filter((i) => last.doc.nodes[i]), sub: null } });
+      const restored = keepNavigation(s.doc, last.doc);
+      set({ doc: restored, past: s.past.slice(0, -1), future: [s.doc, ...s.future].slice(0, HISTORY_LIMIT), saveStatus: s.access === 'VIEW' ? 'readonly' : 'dirty', dirtyAt: Date.now(), sel: { ids: s.sel.ids.filter((i) => restored.nodes[i]), sub: null } });
     },
 
     redo: () => {
       const s = get();
       const next = s.future[0];
       if (!next) return;
-      set({ doc: next, past: [...s.past, { doc: s.doc, t: Date.now() }].slice(-HISTORY_LIMIT), future: s.future.slice(1), saveStatus: s.access === 'VIEW' ? 'readonly' : 'dirty', dirtyAt: Date.now(), sel: { ids: s.sel.ids.filter((i) => next.nodes[i]), sub: null } });
+      const restored = keepNavigation(s.doc, next);
+      set({ doc: restored, past: [...s.past, { doc: s.doc, t: Date.now() }].slice(-HISTORY_LIMIT), future: s.future.slice(1), saveStatus: s.access === 'VIEW' ? 'readonly' : 'dirty', dirtyAt: Date.now(), sel: { ids: s.sel.ids.filter((i) => restored.nodes[i]), sub: null } });
     },
 
     toggleOpen: (nodeId, group) =>

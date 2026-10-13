@@ -2,13 +2,14 @@ import { z } from 'zod';
 import { materialIndex } from './catalog';
 import type { SceneDoc } from './types';
 import { validateNode, validateRoom } from './scene';
+import { validatePlan } from './plan/validate';
 
 const vec3 = z.tuple([z.number().finite(), z.number().finite(), z.number().finite()]);
 const pos = z.number().finite().positive();
 
 const nodeSchema = z.object({
   id: z.string().min(1).max(64),
-  type: z.enum(['wardrobe', 'cabinet', 'countertop', 'appliance', 'tv_panel', 'box', 'model', 'group']),
+  type: z.enum(['wardrobe', 'cabinet', 'countertop', 'appliance', 'tv_panel', 'box', 'model', 'furniture', 'group']),
   name: z.string().max(120),
   parentId: z.string().nullable(),
   position: vec3,
@@ -18,6 +19,7 @@ const nodeSchema = z.object({
   subMaterials: z.record(z.string(), z.record(z.string(), z.string())).optional(),
   visible: z.boolean(),
   locked: z.boolean(),
+  floorId: z.string().max(64).optional(),
   params: z.record(z.string(), z.unknown()),
   notes: z.string().max(2000).optional(),
 });
@@ -79,6 +81,7 @@ export const docSchema = z.object({
     roomLight: z.number().min(0).max(4),
   }),
   meta: z.object({ createdWith: z.string(), notes: z.string() }),
+  plan: z.unknown().optional(),
 });
 
 export interface ValidationReport {
@@ -129,6 +132,13 @@ export function validateDoc(input: unknown): ValidationReport {
   for (const m of doc.customMaterials) {
     if (m.texture === 'image' && !m.textureUrl) errors.push(`Material "${m.name}" uses an image texture without a file.`);
     if (m.textureUrl && !/^\/api\/assets\/[A-Za-z0-9_-]+$/.test(m.textureUrl)) errors.push(`Material "${m.name}": texture URL must be an uploaded asset.`);
+  }
+  if (doc.plan) {
+    const pv = validatePlan(doc.plan);
+    errors.push(...pv.errors.slice(0, 8).map((m) => `Floor plan: ${m}`));
+    warnings.push(...pv.warnings);
+    const floors = new Set(doc.plan.buildings?.flatMap((b) => b.floors.map((f) => f.id)) ?? []);
+    for (const n of Object.values(doc.nodes)) if (n.floorId && !floors.has(n.floorId)) errors.push(`${n.name}: it stands on a floor that does not exist.`);
   }
   for (const i of validateRoom(doc.room)) (i.level === 'error' ? errors : warnings).push(`Room: ${i.message}`);
   return { ok: errors.length === 0, errors, warnings, doc };

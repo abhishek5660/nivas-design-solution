@@ -15,6 +15,7 @@ const createSchema = z.object({
   roomDepth: z.number().min(1500).max(20000).optional(),
   roomHeight: z.number().min(2000).max(5000).optional(),
   empty: z.boolean().optional(),
+  floorPlan: z.boolean().optional(),
   doc: z.unknown().optional(), // imported / template document
 });
 
@@ -50,7 +51,7 @@ export const POST = handle(async (req: Request) => {
     if (!rep.ok) throw new HttpError(422, 'The supplied design is invalid.', rep.errors);
     data = rep.doc!;
   } else {
-    data = starterDoc(body.category, { layout: body.layout, roomWidth: body.roomWidth, roomDepth: body.roomDepth, roomHeight: body.roomHeight, empty: body.empty });
+    data = body.floorPlan ? starterDoc('CUSTOM', { floorPlan: true }) : starterDoc(body.category, { layout: body.layout, roomWidth: body.roomWidth, roomDepth: body.roomDepth, roomHeight: body.roomHeight, empty: body.empty });
   }
   const project = await prisma.project.create({
     data: { ownerId: user.id, name: body.name, category: body.category, customer: body.customer ?? '', roomNotes: body.roomNotes ?? '', data: data as object },

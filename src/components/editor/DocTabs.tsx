@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildBoq, type BoqItem } from '@/lib/docs/bom';
 import { buildCutList, nestCutList } from '@/lib/docs/cutlist';
+import { planBoq } from '@/lib/plan/outputs';
+import { buildFloorSheet } from '@/lib/plan/sheet';
 import { buildDrawing, drawingToDXF, drawingToSVG, type DrawingView } from '@/lib/docs/drawing';
 import { assemblyInfo, money } from '@/lib/docs/export';
 import { nodeCodes } from '@/lib/docs/resolve';
@@ -47,15 +49,19 @@ function Panel({ children, className = '' }: { children: React.ReactNode; classN
 export function DrawingsTab() {
   const doc = useEditor((s) => s.doc);
   const meta = useEditor((s) => s.meta);
-  const [view, setView] = useState<DrawingView>('front');
+  const plan = doc.plan?.enabled ? doc.plan : null;
+  const [view, setView] = useState<DrawingView | 'floor'>(plan ? 'floor' : 'front');
+  const [floorId, setFloorId] = useState(plan?.activeFloorId ?? '');
   const [interior, setInterior] = useState(false);
   const [dims, setDims] = useState(true);
   const [labels, setLabels] = useState(true);
   const codes = nodeCodes(doc);
-  const d = useMemo(() => buildDrawing(doc, view, { showInterior: interior, dimensions: dims, labels }), [doc, view, interior, dims, labels]);
+  const d = useMemo(() => (view === 'floor' ? buildFloorSheet(doc, floorId || plan!.activeFloorId, { dimensions: dims, labels }) : buildDrawing(doc, view, { showInterior: interior, dimensions: dims, labels, room: !plan })), [doc, view, interior, dims, labels, floorId, plan]);
   const svg = useMemo(() => drawingToSVG(d, { maxPx: 1400, title: `${meta?.name ?? ''} - ${d.title}` }), [d, meta?.name]);
-  const views: [DrawingView, string][] = [['plan', 'Top plan'], ['front', 'Front elevation'], ['back', 'Back elevation'], ['left', 'Left elevation'], ['right', 'Right elevation']];
-  if (!doc.order.length) return <div className="p-8"><EmptyState title="Nothing to draw yet" hint="Add components in the Design tab - drawings are generated from the 3D model." /></div>;
+  const first: [DrawingView | 'floor', string] = plan ? ['floor', 'Floor plan'] : ['plan', 'Top plan'];
+  const views: [DrawingView | 'floor', string][] = [first, ['front', 'Front elevation'], ['back', 'Back elevation'], ['left', 'Left elevation'], ['right', 'Right elevation']];
+  const hasContent = plan ? d.prims.length > 0 || doc.order.length > 0 || plan.buildings.some((b) => b.floors.some((f) => f.order.length)) : doc.order.length > 0;
+  if (!hasContent) return <div className="p-8"><EmptyState title="Nothing to draw yet" hint="Add components in the Design tab - drawings are generated from the 3D model." /></div>;
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <div className="flex flex-wrap items-center gap-2">
@@ -64,13 +70,18 @@ export function DrawingsTab() {
             <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)} className={`rounded-md px-3 py-1.5 text-xs font-semibold ${view === k ? 'bg-ink text-gold-soft' : 'text-graphite hover:bg-linen'}`}>{l}</button>
           ))}
         </div>
-        <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={interior} onChange={(e) => setInterior(e.target.checked)} disabled={view === 'plan'} /> Show interior (hide shutters)</label>
+        <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={interior} onChange={(e) => setInterior(e.target.checked)} disabled={view === 'plan' || view === 'floor'} /> Show interior (hide shutters)</label>
         <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={dims} onChange={(e) => setDims(e.target.checked)} /> Dimensions</label>
         <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} /> Cabinet labels</label>
+        {plan && view === 'floor' && (
+          <select className="input !w-auto !py-1 text-xs" value={floorId || plan.activeFloorId} onChange={(e) => setFloorId(e.target.value)} aria-label="Floor">
+            {plan.buildings.flatMap((b) => b.floors.map((f) => <option key={f.id} value={f.id}>{plan.buildings.length > 1 ? `${b.name} — ` : ''}{f.name}</option>))}
+          </select>
+        )}
         <div className="ml-auto flex flex-wrap gap-1.5">
           <button className="btn btn-sm" onClick={() => download(`${slug(meta?.name ?? 'drawing')}-${view}.svg`, svg, 'image/svg+xml')}>SVG</button>
           <button className="btn btn-sm" onClick={() => download(`${slug(meta?.name ?? 'drawing')}-${view}.dxf`, drawingToDXF(d), 'application/dxf')}>DXF</button>
-          <button className="btn btn-sm btn-primary" onClick={() => exportFromServer('drawings.pdf')}>PDF (plan, front, side)</button>
+          <button className="btn btn-sm btn-primary" onClick={() => exportFromServer('drawings.pdf')}>{plan ? 'PDF (all floors + elevations)' : 'PDF (plan, front, side)'}</button>
         </div>
       </div>
       <Panel className="overflow-auto !p-2">
@@ -98,6 +109,35 @@ export function DrawingsTab() {
 }
 
 // ---------------- BOQ ----------------
+/** Quantities measured from the floor plan (walls, openings, finishes, furniture). Prices are entered in Outputs → Pricing. */
+function PlanBoqSection() {
+  const doc = useEditor((s) => s.doc);
+  const setUi = useEditor((s) => s.setUi);
+  const boq = useMemo(() => planBoq(doc), [doc]);
+  const cur = doc.pricing.currency;
+  const sections = Array.from(new Set(boq.lines.map((l) => l.section))).filter((x) => boq.lines.some((l) => l.section === x && l.source !== 'cabinetry'));
+  const plan = boq.lines.filter((l) => l.source !== 'cabinetry');
+  return (
+    <Panel>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-display text-xl font-semibold">Floor plan quantities</h3>
+        <button className="btn btn-sm" onClick={() => { setUi({ tab: 'design' }); import('@/store/planUi').then((m) => m.usePlanUi.getState().setPanel('pricing')); }}>Edit unit prices…</button>
+      </div>
+      {!plan.length ? <p className="text-sm text-mute">No walls, openings or finishes yet.</p> : (
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs uppercase tracking-wider text-mute"><tr><th className="py-1">Item</th><th className="text-right">Qty</th><th className="text-right">Unit price</th><th className="text-right">Amount</th></tr></thead>
+          <tbody>
+            {sections.map((sec) => plan.filter((l) => l.section === sec).map((l, i) => (
+              <tr key={l.key} className="border-t border-sand"><td className="py-1"><span className="font-medium">{l.description}</span> <span className="text-[11px] text-mute">{i === 0 ? sec + ' · ' : ''}{l.spec}</span></td><td className="text-right tabular-nums">{l.qty} {l.unit}</td><td className="text-right tabular-nums">{l.unitPrice == null ? <span className="text-danger">no price</span> : l.unitPrice}</td><td className="text-right tabular-nums">{l.unitPrice == null ? '—' : l.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>
+            )))}
+          </tbody>
+        </table>
+      )}
+      <p className="mt-2 text-sm">Priced floor-plan items: <b>{cur} {boq.planTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</b>{boq.unpriced > 0 && <span className="text-warn"> · {boq.unpriced} line{boq.unpriced === 1 ? '' : 's'} without a price are not included.</span>}</p>
+    </Panel>
+  );
+}
+
 export function BoqTab() {
   const doc = useEditor((s) => s.doc);
   const setDocPart = useEditor((s) => s.setDocPart);
@@ -111,7 +151,7 @@ export function BoqTab() {
   const setP = (x: Partial<typeof p>, key = 'pricing') => setDocPart('pricing', { ...p, ...x }, key);
   if (err) return <div className="p-6"><Hint tone="error">{err}</Hint></div>;
   if (!boq) return <div className="grid place-items-center p-20"><Spinner size={28} /></div>;
-  if (!boq.items.length) return <div className="p-8"><EmptyState title="Empty BOQ" hint="The bill of quantities is generated from the components in your design." /></div>;
+  if (!boq.items.length) return doc.plan?.enabled ? <div className="mx-auto max-w-6xl space-y-4 p-5"><PlanBoqSection /></div> : <div className="p-8"><EmptyState title="Empty BOQ" hint="The bill of quantities is generated from the components in your design." /></div>;
 
   const setRate = (it: BoqItem, price: number, estimate = it.estimate) => setP({ overrides: { ...p.overrides, [it.key]: { unitPrice: price, estimate } } }, `rate:${it.key}`);
   const clearRate = (it: BoqItem) => {
@@ -124,6 +164,7 @@ export function BoqTab() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
+      {doc.plan?.enabled && <PlanBoqSection />}
       <div className="rounded-lg border border-warn/40 bg-warn/5 px-4 py-2.5 text-sm text-warn">
         <b>Estimate only.</b> Quantities come from your model. Rates marked <i>illustrative</i> are placeholder starter values, not supplier prices - replace them with your own before sending a quote.
       </div>

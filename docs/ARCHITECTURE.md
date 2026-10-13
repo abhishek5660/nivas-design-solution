@@ -36,6 +36,17 @@ Zustand store holding the document, selection (+ sub-selection: section/door/dra
 * `patchNode` is the single edit path for numeric/inspector edits; it validates before applying and surfaces the first error as a toast and inline message.
 * Grouping uses `parentId`; transforms propagate to descendants.
 
+## Floor-plan model (`src/lib/plan`, `src/components/plan`)
+
+`SceneDoc.plan` (optional) holds buildings → floors → entities (walls, openings, slabs, … annotations; see `plan/types.ts`). Everything is pure TypeScript except the React shell:
+
+* `walls.ts` / `rooms.ts` - wall network normalisation (split at junctions), joined wall outlines, planar-face room detection with net areas.
+* `ops.ts` / `entities.ts` - geometry of every entity (paths, bounds, snap points, hit tests) and the edit operations (move, rotate, mirror, scale, offset, trim, extend, fillet, components, grips).
+* `tools.ts` + `engine.ts` - UI-agnostic tool state machines behind a `PlanHost` interface; the browser implements it in `store/planHost.ts`, the unit tests with a plain object (`tests/plan-harness.ts`), so tools are tested by simulating pointer events.
+* `model3d.ts` - 2D → 3D descriptors (wall solids with openings, surfaces, tiles, stairs, railings, roofs, lights) rendered by `components/plan/PlanMesh.tsx`; `sheet.ts` - printable floor drawing; `outputs.ts` - BOQ / raw materials / QC / schedule; `exportDxf.ts`; `actions.ts` - floors, buildings, align, automatic tools, branches, wizard, room conversion.
+* UI state (ribbon, tool options, panels, cursor, selection) is in `store/planUi.ts`; **model** changes always go through the editor store (`commit`) so undo/redo, autosave, validation (`plan/validate.ts`) and versioning are shared with the 3D designers. Navigation (open floor/building) is stored in the document but is not an undo step, and undo never switches floors.
+* Furniture/cabinets stay `SceneNode`s (with `floorId`), so BOQ, cut list and production documents keep working.
+
 ## Persistence & reliability (`src/store/save.ts`, `src/app/api/projects/[id]`)
 
 * Debounced autosave (1.5 s) plus manual save (Ctrl+S) → `PUT /api/projects/:id` with `baseVersion`.

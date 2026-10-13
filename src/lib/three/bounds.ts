@@ -1,3 +1,5 @@
+import { entityBounds } from '../plan/entities';
+import { planHasContent } from '../plan/model3d';
 import { buildParts } from '../scene';
 import type { Part, SceneDoc, SceneNode, Vec3 } from '../types';
 
@@ -67,15 +69,35 @@ export function sceneBounds(doc: SceneDoc, ids?: string[]): Box3m {
           min[2] = Math.min(min[2], wz); max[2] = Math.max(max[2], wz);
         }
   }
-  if (!list.length || !Number.isFinite(min[0])) {
-    const xs = doc.room.points.map((p) => p[0]);
-    const zs = doc.room.points.map((p) => p[1]);
-    return { min: [Math.min(...xs), 0, Math.min(...zs)], max: [Math.max(...xs), doc.room.height, Math.max(...zs)] };
-  }
+  if (!list.length || !Number.isFinite(min[0])) return roomBox(doc);
   return { min, max };
 }
 
+/** Bounds of every floor of the floor-plan model (mm), or null when the plan is empty. */
+export function planBox(doc: SceneDoc): Box3m | null {
+  const p = doc.plan;
+  if (!p?.enabled) return null;
+  if (!planHasContent(p)) return { min: [0, 0, 0], max: [6000, 2800, 5000] };
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const b of p.buildings)
+    for (const f of b.floors) {
+      minY = Math.min(minY, f.elevation);
+      maxY = Math.max(maxY, f.elevation + f.height);
+      for (const id of f.order) {
+        const e = f.entities[id];
+        if (!e || e.kind === 'reference' || e.kind === 'guide') continue;
+        const bx = entityBounds(f, e);
+        if (!bx) continue;
+        minX = Math.min(minX, bx.minX); maxX = Math.max(maxX, bx.maxX); minZ = Math.min(minZ, bx.minY); maxZ = Math.max(maxZ, bx.maxY);
+      }
+    }
+  if (!Number.isFinite(minX)) return { min: [0, 0, 0], max: [6000, 2800, 5000] };
+  return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+}
+
 export function roomBox(doc: SceneDoc): Box3m {
+  const pb = planBox(doc);
+  if (pb) return pb;
   const xs = doc.room.points.map((p) => p[0]);
   const zs = doc.room.points.map((p) => p[1]);
   return { min: [Math.min(...xs), 0, Math.min(...zs)], max: [Math.max(...xs), doc.room.height, Math.max(...zs)] };

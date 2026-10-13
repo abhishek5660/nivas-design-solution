@@ -14,5 +14,8 @@ export default async function Page({ params }: { params: Promise<{ token: string
   if (!project) notFound();
   const rep = validateDoc(project.data);
   if (!rep.ok) notFound();
-  return <PublicViewer token={token} name={project.name} category={project.category} doc={rep.doc!} version={project.version} updatedAt={project.updatedAt.toISOString()} />;
+  // the public preview never carries prices, schedules, other branches or gallery images
+  const d = rep.doc!;
+  const safe = { ...d, pricing: { ...d.pricing, overrides: {} }, plan: d.plan ? { ...d.plan, prices: {}, schedule: {}, branches: [], gallery: [] } : undefined };
+  return <PublicViewer token={token} name={project.name} category={project.category} doc={safe} version={project.version} updatedAt={project.updatedAt.toISOString()} />;
 }
